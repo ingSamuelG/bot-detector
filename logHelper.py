@@ -11,6 +11,7 @@ class logHelper:
     def __init__(self):
         self.ssh_server_con = sshConnector()
         self.prod_log_file_path = os.getenv("PROD_LOG_FILE_PATH")
+        self.internal_log_file_path = os.getenv("INTERNAL_LOG_FILE_PATH")
 
     def get_time_from_prod_log_line(self, line):
         pattern = r"\[([\d/: ]+)\]"
@@ -64,7 +65,7 @@ class logHelper:
 
     def log_bad_ips(self, dic):
         first_key = next(iter(dic)).split(" ")[0].replace("/", "-")
-        with open(f".\\files\\{first_key}.log", "a") as log_file:
+        with open(f"{self.internal_log_file_path}{first_key}.log", "a") as log_file:
             for key, values in dic.items():
                 for in_key, in_value in values.items():
                     # Write each value
