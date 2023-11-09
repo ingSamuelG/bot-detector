@@ -4,7 +4,8 @@ import os
 import socket
 import paramiko
 import re
-from datetime import datetime, timedelta
+import json
+from datetime import timedelta
 
 
 class botDetector:
@@ -33,7 +34,7 @@ class botDetector:
             else:
                 print("Not found in cache")
                 total = self.logHelper.get_total_lines_for_prod_log()
-                self.cache.setex("total_lines", 10800, total)
+                self.cache.setex("total_lines", 1, total)
                 return int(total)
         except socket.gaierror as e:
             print(f"Error on the SSH in the log helper: the address is incorrect: {e}")
@@ -51,14 +52,68 @@ class botDetector:
     def __get_last_processed_line_to_cache(self):
         return self.cache.get("last_processed_line")
 
+    def __set_last_bad_ip_dic_cache(self, dic):
+        json_for_redis = json.dumps(dic)
+        self.cache.set("last_bad_ip_dic", json_for_redis)
+
+    def __last_bad_ip_dic_cache(self):
+        redis_dic = self.cache.get("last_bad_ip_dic")
+        return json.loads(redis_dic)
+
+    def __set_dom_for_ip_cache(self, ip, dom):
+        self.cache.setex(ip, 21600, dom)
+
+    def ___get_dom_for_ip_cache(self, ip):
+        self.cache.get(ip)
+
+    def __get_dom(self, ip):
+        cache_dom = self.___get_dom_for_ip_cache(ip)
+        if cache_dom:
+            return cache_dom
+        else:
+            bytes_out = self.logHelper.ssh_server_con.exec_comand_in_server_get_stdout(
+                f"host {ip}"
+            )
+            dom_string = bytes_out.decode("utf-8").split(" ")[-1]
+            self.__set_dom_for_ip_cache(ip, dom_string)
+            return dom_string
+
+    def __remove_good_bots(self, bad_ip_dic):
+        good_bot_list = [
+            "search.msn.com",
+            "yandex.com",
+            "googlebot.com",
+            "google.com",
+            "googleusercontent.com",
+        ]
+
+        for date_time_key, ips in bad_ip_dic.items():
+            # for ip, amount_of_req in ips.items():
+            for ip in list(ips.keys()):
+                dom_for_ip = self.__get_dom(ip)
+                is_a_good_bot = any(
+                    [
+                        True if good_bot in dom_for_ip else False
+                        for good_bot in good_bot_list
+                    ]
+                )
+
+                # print(
+                #     f"{('3(NXDOMAIN)' in dom_for_ip)}  and this is dom {dom_for_ip} \n"
+                # )
+                bad_ip_dic[date_time_key][ip]["dom"] = dom_for_ip
+
+                if is_a_good_bot:
+                    bad_ip_dic[date_time_key].pop(ip)
+
+        return bad_ip_dic
+
+    def __verify_domain(self, domain):
+        pass
+
     def __get_bad_ips_by_num_req_per_min(self, log_data):
         bad_ips = []
-        ip_per_min = {}
         date_ip_per_min = {}
-        current_minutes = 1
-        endTime = self.logHelper.get_time_from_prod_log_line(log_data[0]) + timedelta(
-            minutes=1
-        )
 
         for log_line in log_data:
             if self.logHelper.is_a_valid_prod_log_line(log_line):
@@ -68,21 +123,23 @@ class botDetector:
 
                 if date_key in date_ip_per_min:
                     if ip in date_ip_per_min[date_key]:
-                        date_ip_per_min[date_key][ip] += 1
+                        date_ip_per_min[date_key][ip]["req"] += 1
                     else:
-                        date_ip_per_min[date_key][ip] = 1
+                        date_ip_per_min[date_key][ip] = {"req": 1}
                 else:
-                    date_ip_per_min[date_key] = {ip: 1}
+                    date_ip_per_min[date_key] = {ip: {"req": 1}}
 
         bad_ips = {
             date_key_v: {
-                ip: count for ip, count in ips.items() if count >= self.max_req_per_min
+                ip: {"req": count["req"]}
+                for ip, count in ips.items()
+                if count["req"] >= int(self.max_req_per_min)
             }
             for date_key_v, ips in date_ip_per_min.items()
         }
 
-        # Remove date_key if it has no IPs meeting the threshold
-        bad_ips = {date_key: ips for date_key, ips in bad_ips.items() if ips}
+        no_bot_ips = self.__remove_good_bots(bad_ips)
+        bad_ips = {date_key: ips for date_key, ips in no_bot_ips.items() if ips}
 
         return bad_ips
 
@@ -102,9 +159,15 @@ class botDetector:
             (total_lines - last_index) if last_index < total_lines else total_lines
         )
 
+        print(
+            f"Total is {total_lines}  my last line was  {last_index} i will do tail {numLineToStar}"
+        )
+
         logData = self.logHelper.retrieve_prod_log_from_this_line_number(numLineToStar)
 
-        self.__get_bad_ips_by_num_req_per_min(logData[1:1000])
-        return logData[0]
+        badip = self.__get_bad_ips_by_num_req_per_min(logData)
+        self.logHelper.log_bad_ips(badip)
+        self.__set_last_processed_line_to_cache(total_lines)
+        print("finish ")
 
         # return [line for line in self.logHelper.read_prod_log()]
