@@ -13,15 +13,24 @@ class botDetector:
         REDIS_HOST = os.getenv("REDIS_HOST")
         REDIS_PORT = os.getenv("REDIS_PORT")
         REDIS_PASS = os.getenv("REDIS_PASS")
+
         self.max_req_per_min = os.getenv("MAX_REQUEST_PER_MIN")
 
-        self.cache = redis.StrictRedis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            db=0,
-            decode_responses=True,
-            password=REDIS_PASS,
-        )
+        if REDIS_PASS:
+            self.cache = redis.StrictRedis(
+                host=REDIS_HOST,
+                port=REDIS_PORT,
+                db=0,
+                decode_responses=True,
+                password=REDIS_PASS,
+            )
+        else:
+            self.cache = redis.StrictRedis(
+                host=REDIS_HOST,
+                port=REDIS_PORT,
+                db=0,
+                decode_responses=True,
+            )
 
         self.logHelper = logHelper()
 
