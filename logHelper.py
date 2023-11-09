@@ -63,14 +63,14 @@ class logHelper:
         print(f"file copied files in locally: copy_prod.log")
 
     def log_bad_ips(self, dic):
-        with open(f".\\files\\test.log", "w") as log_file:
+        first_key = next(iter(dic)).split(" ")[0].replace("/", "-")
+        with open(f".\\files\\{first_key}.log", "a") as log_file:
             for key, values in dic.items():
-                # Write the key
-                log_file.write(f"Key: {key}\n")
-                # Iterate over the values in the list for this key
                 for in_key, in_value in values.items():
                     # Write each value
-                    log_file.write(f"\t{in_key}  num of request :{in_value}\n")
+                    log_file.write(
+                        f"started at {key} IP:{in_key} made {in_value['req']} req host is {in_value['dom']}\n"
+                    )
 
     def copy_log_from_server_ftp(self):
         pass
