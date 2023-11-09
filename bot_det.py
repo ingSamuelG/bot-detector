@@ -168,6 +168,7 @@ class botDetector:
         badip = self.__get_bad_ips_by_num_req_per_min(logData)
         self.logHelper.log_bad_ips(badip)
         self.__set_last_processed_line_to_cache(total_lines)
+        self.logHelper.ssh_server_con.close_conn()
         print("finish ")
 
         # return [line for line in self.logHelper.read_prod_log()]
